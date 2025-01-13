@@ -1,6 +1,7 @@
 #include <vector>
 #include <random>
 #include <chrono>
+#include <string.h>
 
 #include <iostream>
 #include <ctime>
@@ -40,12 +41,121 @@ bool __device__ b58enc(char* b58, size_t* b58sz, uint8_t* data, size_t binsz);
 
 /* -- Entry Point ----------------------------------------------------------- */
 
-int main(int argc, char const* argv[]) {
-	ed25519_set_verbose(true);
+void print_usage() {
+    printf("Usage: vanity [options] prefix1 [prefix2 ...]\n");
+    printf("Options:\n");
+	printf("  --suffix               Match patterns at the end of keys instead of beginning\n");
+    printf("  -n, --num-keys NUM     Number of keys to generate before stopping (default: 100)\n");    
+    printf("  -i, --iterations NUM   Maximum number of iterations (default: 100000)\n");
+    printf("  -a, --attempts NUM     Attempts per execution (default: 100000)\n");
+    printf("  prefix1, prefix2, etc: Patterns to search for. Use ? as wildcard.\n");
+    printf("Example: vanity -n 5 --suffix -i 50000 -a 200000 ABC?? DEF??\n");
+}
 
-	config vanity;
-	vanity_setup(vanity);
-	vanity_run(vanity);
+
+int main(int argc, char const* argv[]) {
+    ed25519_set_verbose(true);
+
+    if (argc < 2) {
+        print_usage();
+        return 1;
+    }
+
+    // Default values
+
+    bool use_suffix = false;
+    
+    // Parse arguments
+    int arg_idx = 1;
+    
+    // Process optional flags first
+    while (arg_idx < argc) {
+        if (strcmp(argv[arg_idx], "-n") == 0 || strcmp(argv[arg_idx], "--num-keys") == 0) {
+            if (arg_idx + 1 >= argc) {
+                printf("Error: -n/--num-keys requires a number\n");
+                print_usage();
+                return 1;
+            }
+            STOP_AFTER_KEYS_FOUND = atoi(argv[arg_idx + 1]);
+            arg_idx += 2;
+        }
+        else if (strcmp(argv[arg_idx], "-i") == 0 || strcmp(argv[arg_idx], "--iterations") == 0) {
+            if (arg_idx + 1 >= argc) {
+                printf("Error: -i/--iterations requires a number\n");
+                print_usage();
+                return 1;
+            }
+            MAX_ITERATIONS = atoi(argv[arg_idx + 1]);
+            arg_idx += 2;
+        }
+        else if (strcmp(argv[arg_idx], "-a") == 0 || strcmp(argv[arg_idx], "--attempts") == 0) {
+            if (arg_idx + 1 >= argc) {
+                printf("Error: -a/--attempts requires a number\n");
+                print_usage();
+                return 1;
+            }
+            attempts_per_exec = atoi(argv[arg_idx + 1]);
+            arg_idx += 2;
+        }
+        else if (strcmp(argv[arg_idx], "--suffix") == 0) {
+            use_suffix = true;
+            arg_idx++;
+        }
+        else {
+            // Not a flag, must be start of patterns
+            break;
+        }
+    }
+
+    // Parse patterns
+    int prefix_count = 0;
+    char host_prefixes[MAX_PATTERNS][32] = {0}; // Temporary array on host
+    
+    // Collect remaining arguments as patterns
+    while (arg_idx < argc && prefix_count < MAX_PATTERNS) {
+        if (strlen(argv[arg_idx]) >= 32) {
+            printf("Error: Pattern too long: %s\n", argv[arg_idx]);
+            return 1;
+        }
+        strcpy(host_prefixes[prefix_count], argv[arg_idx]);
+        prefix_count++;
+        arg_idx++;
+    }
+
+    if (prefix_count == 0) {
+        printf("Error: At least one pattern is required\n");
+        return 1;
+    }
+
+    if (arg_idx < argc) {
+        printf("Warning: Maximum number of patterns (%d) exceeded, additional patterns ignored\n", MAX_PATTERNS);
+    }
+
+    // Copy patterns to device
+    cudaMemcpyToSymbol(prefixes, host_prefixes, sizeof(host_prefixes));
+    
+    // Copy the suffix flag to device
+    cudaMemcpyToSymbol(is_suffix_match, &use_suffix, sizeof(bool));
+    
+    // Copy other parameters to device constants
+    cudaMemcpyToSymbol(ATTEMPTS_PER_EXECUTION, &attempts_per_exec, sizeof(int));
+
+    printf("Configuration:\n");
+    printf("  Max iterations: %d\n", MAX_ITERATIONS);
+    printf("  Keys to find: %d\n", STOP_AFTER_KEYS_FOUND);
+    printf("  Attempts per execution: %d\n", attempts_per_exec);
+    printf("  Match type: %s\n", use_suffix ? "suffix" : "prefix");
+    printf("Patterns to match:\n");
+    for (int i = 0; i < prefix_count; i++) {
+        printf("  Pattern %d: %s\n", i + 1, host_prefixes[i]);
+    }
+
+    // Pass the values to vanity_run
+    config vanity;
+    vanity_setup(vanity);
+    vanity_run(vanity);
+
+    return 0;
 }
 
 // SMITH
@@ -194,8 +304,8 @@ void vanity_run(config &vanity) {
 			//printf("GPU %d found %d keys\n",g,keys_found_this_iteration);
 
                 	cudaMemcpy( &executions_this_gpu, dev_executions_this_gpu[g], sizeof(int), cudaMemcpyDeviceToHost ); 
-                	executions_this_iteration += executions_this_gpu * ATTEMPTS_PER_EXECUTION; 
-                	executions_total += executions_this_gpu * ATTEMPTS_PER_EXECUTION; 
+                	executions_this_iteration += executions_this_gpu * attempts_per_exec; 
+                	executions_total += executions_this_gpu * attempts_per_exec; 
                         //printf("GPU %d executions: %d\n",g,executions_this_gpu);
 		}
 
@@ -229,8 +339,9 @@ void __global__ vanity_init(unsigned long long int* rseed, curandState* state) {
 
 void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* exec_count) {
 	int id = threadIdx.x + (blockIdx.x * blockDim.x);
+	const char hex[] = "0123456789abcdef";
 
-        atomicAdd(exec_count, 1);
+	atomicAdd(exec_count, 1);
 
 	// SMITH - should really be passed in, but hey ho
     	int prefix_letter_counts[MAX_PATTERNS];
@@ -399,64 +510,57 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 		// this.
 
                 for (int i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); ++i) {
+                    if (is_suffix_match) {
+                        // For suffix matching, compare from the end
+                        int key_len = 0;
+                        while (key[key_len] != '\0') key_len++;
+                        
+                        for (int j = 0; j < prefix_letter_counts[i]; ++j) {
+                            int key_pos = key_len - prefix_letter_counts[i] + j;
+                            if (key_pos < 0) break;  // Pattern longer than key
+                            
+                            // it doesn't match this suffix, no need to continue
+                            if (!(prefixes[i][j] == '?') && !(prefixes[i][j] == key[key_pos])) {
+                                break;
+                            }
 
-                        for (int j = 0; j<prefix_letter_counts[i]; ++j) {
-
-				// it doesn't match this prefix, no need to continue
-				if ( !(prefixes[i][j] == '?') && !(prefixes[i][j] == key[j]) ) {
-					break;
-				}
-
-                                // we got to the end of the prefix pattern, it matched!
-                                if ( j == ( prefix_letter_counts[i] - 1) ) {
-                                        atomicAdd(keys_found, 1);
-                                        //size_t pkeysize = 256;
-                                        //b58enc(pkey, &pkeysize, seed, 32);
-                                       
-				        // SMITH	
-					// The 'key' variable is the public key in base58 'address' format
-                                        // We display the seed in hex
-
-					// Solana stores the keyfile as seed (first 32 bytes)
-					// followed by public key (last 32 bytes)
-					// as an array of decimal numbers in json format
-
-                                        printf("GPU %d MATCH %s - ", *gpu, key);
-                                        for(int n=0; n<sizeof(seed); n++) { 
-						printf("%02x",(unsigned char)seed[n]); 
-					}
-					printf("\n");
-					
-                                        printf("[");
-					for(int n=0; n<sizeof(seed); n++) { 
-						printf("%d,",(unsigned char)seed[n]); 
-					}
-                                        for(int n=0; n<sizeof(publick); n++) {
-					        if ( n+1==sizeof(publick) ) {	
-							printf("%d",publick[n]);
-						} else {
-							printf("%d,",publick[n]);
-						}
-					}
-                                        printf("]\n");
-
-					/*
-					printf("Public: ");
-                                        for(int n=0; n<sizeof(publick); n++) { printf("%d ",publick[n]); }
-					printf("\n");
-					printf("Private: ");
-                                        for(int n=0; n<sizeof(privatek); n++) { printf("%d ",privatek[n]); }
-					printf("\n");
-					printf("Seed: ");
-                                        for(int n=0; n<sizeof(seed); n++) { printf("%d ",seed[n]); }
-					printf("\n");
-                                        */
-
-                                        break;
-				}
-
+                            // we got to the end of the suffix pattern, it matched!
+                            if (j == (prefix_letter_counts[i] - 1)) {
+                                atomicAdd(keys_found, 1);
+                                
+                                // Build the seed hex string
+                                char seed_hex[65] = {0};
+                                for(int n = 0; n < sizeof(seed); n++) {
+                                    seed_hex[n*2] = hex[(seed[n] >> 4) & 0xF];
+                                    seed_hex[n*2+1] = hex[seed[n] & 0xF];
+                                }
+                                
+                                printf("MATCH:%s,%s\n", key, seed_hex);
+                                break;
+                            }
                         }
-		}
+                    } else {
+                        // Original prefix matching code
+                        for (int j = 0; j < prefix_letter_counts[i]; ++j) {
+                            if (!(prefixes[i][j] == '?') && !(prefixes[i][j] == key[j])) {
+                                break;
+                            }
+                            if (j == (prefix_letter_counts[i] - 1)) {
+                                atomicAdd(keys_found, 1);
+                                
+                                // Build the seed hex string
+                                char seed_hex[65] = {0};
+                                for(int n = 0; n < sizeof(seed); n++) {
+                                    seed_hex[n*2] = hex[(seed[n] >> 4) & 0xF];
+                                    seed_hex[n*2+1] = hex[seed[n] & 0xF];
+                                }
+                                
+                                printf("MATCH:%s,%s\n", key, seed_hex);
+                                break;
+                            }
+                        }
+                    }
+                }
 
 		// Code Until here runs at 22_000_000H/s. So the above is fast enough.
 
