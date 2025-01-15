@@ -185,159 +185,183 @@ unsigned long long int makeSeed() {
 /* -- Vanity Step Functions ------------------------------------------------- */
 
 void vanity_setup(config &vanity) {
-	printf("GPU: Initializing Memory\n");
-	int gpuCount = 0;
-	cudaError_t err = cudaGetDeviceCount(&gpuCount);
-	if (err != cudaSuccess) {
-		printf("Error: Failed to get GPU count: %s\n", cudaGetErrorString(err));
-		exit(1);
-	}
-	if (gpuCount == 0) {
-		printf("Error: No CUDA-capable devices found\n");
-		exit(1);
-	}
+    printf("GPU: Initializing Memory\n");
+    int gpuCount = 0;
+    cudaError_t err = cudaGetDeviceCount(&gpuCount);
+    if (err != cudaSuccess) {
+        printf("Error: Failed to get GPU count: %s\n", cudaGetErrorString(err));
+        exit(1);
+    }
+    if (gpuCount == 0) {
+        printf("Error: No CUDA-capable devices found\n");
+        exit(1);
+    }
 
-	printf("Found %d CUDA-capable device(s)\n", gpuCount);
+    printf("Found %d CUDA-capable device(s)\n", gpuCount);
 
-	// Create random states so kernels have access to random generators
-	// while running in the GPU.
-	for (int i = 0; i < gpuCount; ++i) {
-		cudaSetDevice(i);
+    for (int i = 0; i < gpuCount; ++i) {
+        cudaSetDevice(i);
 
-		// Fetch Device Properties
-		cudaDeviceProp device;
-		cudaGetDeviceProperties(&device, i);
+        cudaDeviceProp device;
+        err = cudaGetDeviceProperties(&device, i);
+        if (err != cudaSuccess) {
+            printf("Error: Failed to get device properties: %s\n", cudaGetErrorString(err));
+            exit(1);
+        }
 
-		// Calculate Occupancy
-		int blockSize       = 0,
-		    minGridSize     = 0,
-		    maxActiveBlocks = 0;
-		cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, vanity_scan, 0, 0);
-		cudaOccupancyMaxActiveBlocksPerMultiprocessor(&maxActiveBlocks, vanity_scan, blockSize, 0);
+        int blockSize = 0, minGridSize = 0, maxActiveBlocks = 0;
+        cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, vanity_scan, 0, 0);
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(&maxActiveBlocks, vanity_scan, blockSize, 0);
 
-		// Output Device Details
-		// 
-		// Our kernels currently don't take advantage of data locality
-		// or how warp execution works, so each thread can be thought
-		// of as a totally independent thread of execution (bad). On
-		// the bright side, this means we can really easily calculate
-		// maximum occupancy for a GPU because we don't have to care
-		// about building blocks well. Essentially we're trading away
-		// GPU SIMD ability for standard parallelism, which CPUs are
-		// better at and GPUs suck at.
-		//
-		// Next Weekend Project: ^ Fix this.
-		printf("GPU: %d (%s <%d, %d, %d>) -- W: %d, P: %d, TPB: %d, MTD: (%dx, %dy, %dz), MGS: (%dx, %dy, %dz)\n",
-			i,
-			device.name,
-			blockSize,
-			minGridSize,
-			maxActiveBlocks,
-			device.warpSize,
-			device.multiProcessorCount,
-		       	device.maxThreadsPerBlock,
-			device.maxThreadsDim[0],
-			device.maxThreadsDim[1],
-			device.maxThreadsDim[2],
-			device.maxGridSize[0],
-			device.maxGridSize[1],
-			device.maxGridSize[2]
-		);
+        printf("GPU: %d (%s <%d, %d, %d>) -- W: %d, P: %d, TPB: %d, MTD: (%dx, %dy, %dz), MGS: (%dx, %dy, %dz)\n",
+            i, device.name, blockSize, minGridSize, maxActiveBlocks,
+            device.warpSize, device.multiProcessorCount, device.maxThreadsPerBlock,
+            device.maxThreadsDim[0], device.maxThreadsDim[1], device.maxThreadsDim[2],
+            device.maxGridSize[0], device.maxGridSize[1], device.maxGridSize[2]
+        );
 
-                // the random number seed is uniquely generated each time the program 
-                // is run, from the operating system entropy
+        unsigned long long int rseed = makeSeed();
+        printf("Initialising from entropy: %llu\n", rseed);
 
-		unsigned long long int rseed = makeSeed();
-		printf("Initialising from entropy: %llu\n",rseed);
+        unsigned long long int* dev_rseed;
+        err = cudaMalloc((void**)&dev_rseed, sizeof(unsigned long long int));
+        if (err != cudaSuccess) {
+            printf("Error: Failed to allocate device memory for rseed: %s\n", cudaGetErrorString(err));
+            exit(1);
+        }
 
-		unsigned long long int* dev_rseed;
-	        cudaMalloc((void**)&dev_rseed, sizeof(unsigned long long int));		
-                cudaMemcpy( dev_rseed, &rseed, sizeof(unsigned long long int), cudaMemcpyHostToDevice ); 
+        err = cudaMemcpy(dev_rseed, &rseed, sizeof(unsigned long long int), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            printf("Error: Failed to copy rseed to device: %s\n", cudaGetErrorString(err));
+            exit(1);
+        }
 
-		cudaMalloc((void **)&(vanity.states[i]), maxActiveBlocks * blockSize * sizeof(curandState));
-		vanity_init<<<maxActiveBlocks, blockSize>>>(dev_rseed, vanity.states[i]);
-	}
+        err = cudaMalloc((void **)&(vanity.states[i]), maxActiveBlocks * blockSize * sizeof(curandState));
+        if (err != cudaSuccess) {
+            printf("Error: Failed to allocate device memory for states: %s\n", cudaGetErrorString(err));
+            exit(1);
+        }
 
-	printf("END: Initializing Memory\n");
+        vanity_init<<<maxActiveBlocks, blockSize>>>(dev_rseed, vanity.states[i]);
+        err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            printf("Error: Failed to launch vanity_init kernel: %s\n", cudaGetErrorString(err));
+            exit(1);
+        }
+    }
+
+    printf("END: Initializing Memory\n");
 }
 
 void vanity_run(config &vanity) {
-	int gpuCount = 0;
-	cudaGetDeviceCount(&gpuCount);
+    int gpuCount = 0;
+    cudaError_t err = cudaGetDeviceCount(&gpuCount);
+    if (err != cudaSuccess) {
+        printf("Error: Failed to get GPU count: %s\n", cudaGetErrorString(err));
+        exit(1);
+    }
 
-	unsigned long long int  executions_total = 0; 
-	unsigned long long int  executions_this_iteration; 
-	int  executions_this_gpu; 
-        int* dev_executions_this_gpu[100];
+    unsigned long long int executions_total = 0;
+    unsigned long long int executions_this_iteration;
+    int executions_this_gpu;
+    int* dev_executions_this_gpu[100];
 
-        int  keys_found_total = 0;
-        int  keys_found_this_iteration;
-        int* dev_keys_found[100]; // not more than 100 GPUs ok!
+    int keys_found_total = 0;
+    int keys_found_this_iteration;
+    int* dev_keys_found[100];
 
-	for (int i = 0; i < MAX_ITERATIONS; ++i) {
-		auto start  = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < MAX_ITERATIONS; ++i) {
+        auto start = std::chrono::high_resolution_clock::now();
+        executions_this_iteration = 0;
 
-                executions_this_iteration=0;
+        for (int g = 0; g < gpuCount; ++g) {
+            err = cudaSetDevice(g);
+            if (err != cudaSuccess) {
+                printf("Error: Failed to set device %d: %s\n", g, cudaGetErrorString(err));
+                exit(1);
+            }
 
-		// Run on all GPUs
-		for (int g = 0; g < gpuCount; ++g) {
-			cudaSetDevice(g);
-			// Calculate Occupancy
-			int blockSize       = 0,
-			    minGridSize     = 0,
-			    maxActiveBlocks = 0;
-			cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, vanity_scan, 0, 0);
-			cudaOccupancyMaxActiveBlocksPerMultiprocessor(&maxActiveBlocks, vanity_scan, blockSize, 0);
+            int blockSize = 0, minGridSize = 0, maxActiveBlocks = 0;
+            cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, vanity_scan, 0, 0);
+            cudaOccupancyMaxActiveBlocksPerMultiprocessor(&maxActiveBlocks, vanity_scan, blockSize, 0);
 
-			int* dev_g;
-	                cudaMalloc((void**)&dev_g, sizeof(int));
-                	cudaMemcpy( dev_g, &g, sizeof(int), cudaMemcpyHostToDevice ); 
+            int* dev_g;
+            err = cudaMalloc((void**)&dev_g, sizeof(int));
+            if (err != cudaSuccess) {
+                printf("Error: Failed to allocate device memory for dev_g: %s\n", cudaGetErrorString(err));
+                exit(1);
+            }
 
-	                cudaMalloc((void**)&dev_keys_found[g], sizeof(int));		
-	                cudaMalloc((void**)&dev_executions_this_gpu[g], sizeof(int));		
+            err = cudaMemcpy(dev_g, &g, sizeof(int), cudaMemcpyHostToDevice);
+            if (err != cudaSuccess) {
+                printf("Error: Failed to copy g to device: %s\n", cudaGetErrorString(err));
+                exit(1);
+            }
 
-			vanity_scan<<<maxActiveBlocks, blockSize>>>(vanity.states[g], dev_keys_found[g], dev_g, dev_executions_this_gpu[g]);
+            err = cudaMalloc((void**)&dev_keys_found[g], sizeof(int));
+            if (err != cudaSuccess) {
+                printf("Error: Failed to allocate device memory for dev_keys_found: %s\n", cudaGetErrorString(err));
+                exit(1);
+            }
 
-		}
+            err = cudaMalloc((void**)&dev_executions_this_gpu[g], sizeof(int));
+            if (err != cudaSuccess) {
+                printf("Error: Failed to allocate device memory for dev_executions_this_gpu: %s\n", cudaGetErrorString(err));
+                exit(1);
+            }
 
-		// Synchronize while we wait for kernels to complete. I do not
-		// actually know if this will sync against all GPUs, it might
-		// just sync with the last `i`, but they should all complete
-		// roughly at the same time and worst case it will just stack
-		// up kernels in the queue to run.
-		cudaDeviceSynchronize();
-		auto finish = std::chrono::high_resolution_clock::now();
+            vanity_scan<<<maxActiveBlocks, blockSize>>>(vanity.states[g], dev_keys_found[g], dev_g, dev_executions_this_gpu[g]);
+            err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                printf("Error: Failed to launch vanity_scan kernel: %s\n", cudaGetErrorString(err));
+                exit(1);
+            }
+        }
 
-		for (int g = 0; g < gpuCount; ++g) {
-                	cudaMemcpy( &keys_found_this_iteration, dev_keys_found[g], sizeof(int), cudaMemcpyDeviceToHost ); 
-                	keys_found_total += keys_found_this_iteration; 
-			//printf("GPU %d found %d keys\n",g,keys_found_this_iteration);
+        err = cudaDeviceSynchronize();
+        if (err != cudaSuccess) {
+            printf("Error: Failed to synchronize devices: %s\n", cudaGetErrorString(err));
+            exit(1);
+        }
 
-                	cudaMemcpy( &executions_this_gpu, dev_executions_this_gpu[g], sizeof(int), cudaMemcpyDeviceToHost ); 
-                	executions_this_iteration += executions_this_gpu * attempts_per_exec; 
-                	executions_total += executions_this_gpu * attempts_per_exec; 
-                        //printf("GPU %d executions: %d\n",g,executions_this_gpu);
-		}
+        auto finish = std::chrono::high_resolution_clock::now();
 
-		// Print out performance Summary
-		std::chrono::duration<double> elapsed = finish - start;
-		printf("%s Iteration %d Attempts: %llu in %f at %fcps - Total Attempts %llu - keys found %d\n",
-			getTimeStr().c_str(),
-			i+1,
-			executions_this_iteration, //(8 * 8 * 256 * 100000),
-			elapsed.count(),
-			executions_this_iteration / elapsed.count(),
-			executions_total,
-			keys_found_total
-		);
+        for (int g = 0; g < gpuCount; ++g) {
+            err = cudaMemcpy(&keys_found_this_iteration, dev_keys_found[g], sizeof(int), cudaMemcpyDeviceToHost);
+            if (err != cudaSuccess) {
+                printf("Error: Failed to copy keys_found from device: %s\n", cudaGetErrorString(err));
+                exit(1);
+            }
+            keys_found_total += keys_found_this_iteration;
 
-                if ( keys_found_total >= STOP_AFTER_KEYS_FOUND ) {
-                	printf("Enough keys found, Done! \n");
-		        exit(0);	
-		}	
-	}
+            err = cudaMemcpy(&executions_this_gpu, dev_executions_this_gpu[g], sizeof(int), cudaMemcpyDeviceToHost);
+            if (err != cudaSuccess) {
+                printf("Error: Failed to copy executions from device: %s\n", cudaGetErrorString(err));
+                exit(1);
+            }
+            executions_this_iteration += executions_this_gpu * attempts_per_exec;
+            executions_total += executions_this_gpu * attempts_per_exec;
+        }
 
-	printf("Iterations complete, Done!\n");
+        // Print out performance Summary
+        std::chrono::duration<double> elapsed = finish - start;
+        printf("%s Iteration %d Attempts: %llu in %f at %fcps - Total Attempts %llu - keys found %d\n",
+            getTimeStr().c_str(),
+            i+1,
+            executions_this_iteration, //(8 * 8 * 256 * 100000),
+            elapsed.count(),
+            executions_this_iteration / elapsed.count(),
+            executions_total,
+            keys_found_total
+        );
+
+        if ( keys_found_total >= STOP_AFTER_KEYS_FOUND ) {
+            printf("Enough keys found, Done! \n");
+            exit(0);	
+        }	
+    }
+
+    printf("Iterations complete, Done!\n");
 }
 
 /* -- CUDA Vanity Functions ------------------------------------------------- */
