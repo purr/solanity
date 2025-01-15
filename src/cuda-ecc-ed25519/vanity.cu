@@ -187,7 +187,17 @@ unsigned long long int makeSeed() {
 void vanity_setup(config &vanity) {
 	printf("GPU: Initializing Memory\n");
 	int gpuCount = 0;
-	cudaGetDeviceCount(&gpuCount);
+	cudaError_t err = cudaGetDeviceCount(&gpuCount);
+	if (err != cudaSuccess) {
+		printf("Error: Failed to get GPU count: %s\n", cudaGetErrorString(err));
+		exit(1);
+	}
+	if (gpuCount == 0) {
+		printf("Error: No CUDA-capable devices found\n");
+		exit(1);
+	}
+
+	printf("Found %d CUDA-capable device(s)\n", gpuCount);
 
 	// Create random states so kernels have access to random generators
 	// while running in the GPU.
