@@ -6,32 +6,67 @@ import subprocess
 
 def get_gpu_info():
     try:
-        # Run nvidia-smi to get GPU info
+        # Run nvidia-smi to get GPU name
         result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=gpu_name,compute_capability",
-                "--format=csv,noheader",
-            ],
+            ["nvidia-smi", "--query-gpu=gpu_name", "--format=csv,noheader"],
             capture_output=True,
             text=True,
             check=True,
         )
 
-        # Parse the output
-        gpu_info = result.stdout.strip().split(",")
-        if len(gpu_info) < 2:
-            raise ValueError("Couldn't parse GPU information")
+        gpu_name = result.stdout.strip().lower()
+        print(f"Found GPU: {gpu_name}")
 
-        gpu_name = gpu_info[0].strip()
-        compute_capability = gpu_info[1].strip()
+        # Map GPU series to compute capabilities
 
-        # Convert compute capability to sm version (e.g., "8.6" -> "sm_86")
-        major, minor = compute_capability.split(".")
-        sm_version = f"sm_{major}{minor}"
-        compute_version = f"compute_{major}{minor}"
+        # RTX 50 series (Blackwell) - Compute 9.0
+        if gpu_name.find("50") != -1 and any(
+            x in gpu_name for x in ["5090", "5080", "5070", "5060"]
+        ):
+            print("RTX 50 series detected, using compute_90")
+            return gpu_name, "sm_90", "compute_90"
 
-        return gpu_name, sm_version, compute_version
+        # RTX 40 series (Ada Lovelace) - Compute 8.9
+        if gpu_name.find("40") != -1 and any(
+            x in gpu_name for x in ["4090", "4080", "4070", "4060"]
+        ):
+            print("RTX 40 series detected, using compute_89")
+            return gpu_name, "sm_89", "compute_89"
+
+        # RTX 30 series (Ampere) - Compute 8.6
+        if gpu_name.find("30") != -1 and any(
+            x in gpu_name for x in ["3090", "3080", "3070", "3060", "3050"]
+        ):
+            print("RTX 30 series detected, using compute_86")
+            return gpu_name, "sm_86", "compute_86"
+
+        # RTX 20 series (Turing) - Compute 7.5
+        if gpu_name.find("20") != -1 and any(
+            x in gpu_name for x in ["2080", "2070", "2060"]
+        ):
+            print("RTX 20 series detected, using compute_75")
+            return gpu_name, "sm_75", "compute_75"
+
+        # GTX 16 series (Turing) - Compute 7.5
+        if gpu_name.find("16") != -1 and any(x in gpu_name for x in ["1660", "1650"]):
+            print("GTX 16 series detected, using compute_75")
+            return gpu_name, "sm_75", "compute_75"
+
+        # GTX 10 series - Compute 6.1
+        if gpu_name.find("10") != -1 and any(
+            x in gpu_name for x in ["1080", "1070", "1060", "1050"]
+        ):
+            print("GTX 10 series detected, using compute_61")
+            return gpu_name, "sm_61", "compute_61"
+
+        # Professional GPUs (Quadro/RTX Professional)
+        if "quadro" in gpu_name or "rtx" in gpu_name:
+            print("Professional GPU detected, using compute_86")
+            return gpu_name, "sm_86", "compute_86"
+
+        # Fallback to safe default
+        print("Could not determine exact GPU model, using compute_86 as safe default")
+        return gpu_name, "sm_86", "compute_86"
 
     except subprocess.CalledProcessError as e:
         print(
@@ -39,36 +74,18 @@ def get_gpu_info():
         )
         print(f"nvidia-smi error: {e.stderr}")
 
-        # Fallback to manual detection
+        # Try nvcc as fallback
         try:
             result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=gpu_name", "--format=csv,noheader"],
-                capture_output=True,
-                text=True,
-                check=True,
+                ["nvcc", "--version"], capture_output=True, text=True, check=True
             )
-            gpu_name = result.stdout.strip()
-            print(f"\nDetected GPU: {gpu_name}")
-            print("Could not automatically determine compute capability.")
-            print(
-                "Please enter your GPU's compute capability (e.g., 8.6 for RTX 30 series, 7.5 for RTX 20 series):"
-            )
-            compute_capability = input().strip()
-
-            major, minor = compute_capability.split(".")
-            sm_version = f"sm_{major}{minor}"
-            compute_version = f"compute_{major}{minor}"
-            return gpu_name, sm_version, compute_version
-
+            print("Found CUDA installation, using compute_86 as safe default")
+            return "Unknown", "sm_86", "compute_86"
         except Exception:
             print(
                 "Could not detect GPU at all. Please edit src/gpu-common.mk manually."
             )
             sys.exit(1)
-
-    except Exception as e:
-        print(f"Error detecting GPU: {str(e)}")
-        sys.exit(1)
 
 
 def update_gpu_common_mk(sm_version, compute_version):
@@ -96,7 +113,6 @@ def update_gpu_common_mk(sm_version, compute_version):
 def main():
     print("Detecting GPU architecture...")
     gpu_name, sm_version, compute_version = get_gpu_info()
-    print(f"Found GPU: {gpu_name}")
     print(f"Compute capability: {sm_version}")
 
     if update_gpu_common_mk(sm_version, compute_version):
