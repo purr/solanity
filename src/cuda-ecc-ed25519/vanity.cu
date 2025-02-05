@@ -761,16 +761,12 @@ bool __device__ b58enc(
     return true;
 }
 
-// Case-insensitive character comparison
+// Case-sensitive character comparison
 __device__ bool char_equals_ignore_case(char a, char b)
 {
     if (a == '?' || b == '?')
         return true;
-    if (a >= 'A' && a <= 'Z')
-        a += 32;
-    if (b >= 'A' && b <= 'Z')
-        b += 32;
-    return a == b;
+    return a == b; // Direct comparison without case conversion
 }
 
 // Pattern matching function that handles both prefix and suffix patterns
