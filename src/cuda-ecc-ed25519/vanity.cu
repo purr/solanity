@@ -262,7 +262,7 @@ void vanity_setup(config &vanity)
         exit(1);
     }
 
-    printf("Found %d CUDA-capable device(s)\n", gpuCount);
+    printf("\n=== Running on %d GPU%s ===\n", gpuCount, gpuCount > 1 ? "s" : "");
 
     for (int i = 0; i < gpuCount; ++i)
     {
@@ -280,14 +280,18 @@ void vanity_setup(config &vanity)
         cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, vanity_scan, 0, 0);
         cudaOccupancyMaxActiveBlocksPerMultiprocessor(&maxActiveBlocks, vanity_scan, blockSize, 0);
 
-        printf("GPU: %d (%s <%d, %d, %d>) -- W: %d, P: %d, TPB: %d, MTD: (%dx, %dy, %dz), MGS: (%dx, %dy, %dz)\n",
-               i, device.name, blockSize, minGridSize, maxActiveBlocks,
-               device.warpSize, device.multiProcessorCount, device.maxThreadsPerBlock,
-               device.maxThreadsDim[0], device.maxThreadsDim[1], device.maxThreadsDim[2],
-               device.maxGridSize[0], device.maxGridSize[1], device.maxGridSize[2]);
+        printf("GPU %d: %s\n", i, device.name);
+        printf("  - Compute Capability: %d.%d\n", device.major, device.minor);
+        printf("  - Memory: %.1f GB\n", device.totalGlobalMem / (1024.0 * 1024.0 * 1024.0));
+        printf("  - CUDA Cores: %d SMs x %d = %d cores\n",
+               device.multiProcessorCount,
+               _ConvertSMVer2Cores(device.major, device.minor),
+               device.multiProcessorCount * _ConvertSMVer2Cores(device.major, device.minor));
+        printf("  - Max threads per block: %d\n", device.maxThreadsPerBlock);
+        printf("  - Current config: %d blocks x %d threads\n", maxActiveBlocks, blockSize);
 
         unsigned long long int rseed = makeSeed();
-        printf("Initialising from entropy: %llu\n", rseed);
+        printf("  - Initializing from entropy: %llu\n", rseed);
 
         unsigned long long int *dev_rseed;
         err = cudaMalloc((void **)&dev_rseed, sizeof(unsigned long long int));
@@ -320,7 +324,8 @@ void vanity_setup(config &vanity)
         }
     }
 
-    printf("END: Initializing Memory\n");
+    printf("\nAll GPUs initialized and ready!\n");
+    printf("=================================\n\n");
 }
 
 void vanity_run(config &vanity)

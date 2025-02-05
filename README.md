@@ -118,6 +118,14 @@ Performance varies by GPU model and pattern complexity:
 - Complex patterns (e.g., "ABCDE"): minutes to hours
 - Multiple patterns: minimal performance impact
 
+The program automatically utilizes all available CUDA-capable GPUs in your system. Each GPU runs in parallel, significantly increasing the search speed. At startup, you'll see detailed information about each GPU being used, including:
+
+- GPU model name
+- Compute capability
+- Available memory
+- Number of CUDA cores
+- Current thread configuration
+
 ## GPU Support
 
 The project automatically detects and configures for your GPU:
