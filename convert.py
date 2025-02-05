@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+import os
 import sys
 import json
 
-import nacl
 from base58 import b58encode
+from nacl.signing import SigningKey  # type: ignore
 
 
 def hex_to_keypair(hex_str):
@@ -22,7 +23,6 @@ def hex_to_keypair(hex_str):
 
         # For Solana keypair, we need both private and public key parts
         # The seed is the private key, we need to derive the public key
-        from nacl.signing import SigningKey
 
         private_key = bytes(seed)
         signing_key = SigningKey(private_key)
@@ -37,6 +37,9 @@ def hex_to_keypair(hex_str):
 
 def main():
     try:
+        # Create keypairs directory if it doesn't exist
+        os.makedirs("keypairs", exist_ok=True)
+
         # Get hex input either from command line or user input
         if len(sys.argv) > 1:
             hex_input = sys.argv[1]
@@ -53,8 +56,8 @@ def main():
         public_key = bytes(keypair[32:])
         pubkey = b58encode(public_key).decode("ascii")
 
-        # Create filename with public key
-        filename = f"keypair_{pubkey}.json"
+        # Create filename with public key in the keypairs directory
+        filename = os.path.join("keypairs", f"keypair_{pubkey}.json")
 
         # Save to file
         with open(filename, "w") as f:
