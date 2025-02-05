@@ -463,21 +463,6 @@ void __global__ vanity_scan(curandState *state, int *keys_found, int *gpu, int *
 
     atomicAdd(exec_count, 1);
 
-    // SMITH - should really be passed in, but hey ho
-    int prefix_letter_counts[MAX_PATTERNS];
-    for (unsigned int n = 0; n < sizeof(prefixes) / sizeof(prefixes[0]); ++n)
-    {
-        if (MAX_PATTERNS == n)
-        {
-            printf("NEVER SPEAK TO ME OR MY SON AGAIN");
-            return;
-        }
-        int letter_count = 0;
-        for (; prefixes[n][letter_count] != 0; letter_count++)
-            ;
-        prefix_letter_counts[n] = letter_count;
-    }
-
     // Local Kernel State
     ge_p3 A;
     curandState localState = state[id];
@@ -485,7 +470,6 @@ void __global__ vanity_scan(curandState *state, int *keys_found, int *gpu, int *
     unsigned char publick[32] = {0};
     unsigned char privatek[64] = {0};
     char key[256] = {0};
-    // char pkey[256]             = {0};
 
     // Start from an Initial Random Seed (Slow)
     // NOTE: Insecure random number generator, do not use keys generator by
