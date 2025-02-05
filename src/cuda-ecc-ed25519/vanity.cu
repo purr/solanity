@@ -32,13 +32,17 @@ typedef struct
     curandState *states[8];
 } config;
 
-/* -- Prototypes, Because C++ ----------------------------------------------- */
+/* -- Function Declarations -------------------------------------------------- */
+
+// Forward declarations of helper functions
+__device__ bool char_equals_ignore_case(char a, char b);
+__device__ bool check_pattern_match(const char *key, const char *pattern, int pattern_len, bool is_suffix);
+__device__ bool b58enc(char *b58, size_t *b58sz, uint8_t *data, size_t binsz);
 
 void vanity_setup(config &vanity);
 void vanity_run(config &vanity);
 void __global__ vanity_init(unsigned long long int *seed, curandState *state);
 void __global__ vanity_scan(curandState *state, int *keys_found, int *gpu, int *execution_count);
-bool __device__ b58enc(char *b58, size_t *b58sz, uint8_t *data, size_t binsz);
 
 /* -- Entry Point ----------------------------------------------------------- */
 
@@ -51,7 +55,7 @@ void print_usage()
     printf("  -n, --num-keys NUM      Number of keys to generate before stopping (default: 100)\n");
     printf("  -i, --iterations NUM    Maximum number of iterations (default: 100000)\n");
     printf("  -a, --attempts NUM      Attempts per execution (default: 100000)\n");
-    printf("  pattern1, pattern2, etc: Prefix patterns to search for. Use ? as wildcard.\n");
+    printf(" pattern1, pattern2, etc: Prefix patterns to search for. Use ? as wildcard.\n");
     printf("Example: vanity -s PUMP -s pump -p ZUKE -p zuke -n 5 -i 50000 -a 200000\n");
 }
 
