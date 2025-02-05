@@ -471,31 +471,47 @@ void __global__ vanity_scan(curandState *state, int *keys_found, int *gpu, int *
     unsigned char privatek[64] = {0};
     char key[256] = {0};
 
-    // Start from an Initial Random Seed (Slow)
-    // NOTE: Insecure random number generator, do not use keys generator by
-    // this program in live.
-    // SMITH: localState should be entropy random now
-    for (int i = 0; i < 32; ++i)
-    {
-        float random = curand_uniform(&localState);
-        uint8_t keybyte = (uint8_t)(random * 255);
-        seed[i] = keybyte;
-    }
+    // Generate a batch of random seeds for better performance
+    const int BATCH_SIZE = 32; // Process 32 random values at a time
+    unsigned int random_batch[BATCH_SIZE];
+    int batch_index = 0;
 
     // Generate Random Key Data
     sha512_context md;
 
-    // I've unrolled all the MD5 calls and special cased them to 32 byte
-    // inputs, which eliminates a lot of branching. This is a pretty poor
-    // way to optimize GPU code though.
-    //
-    // A better approach would be to split this application into two
-    // different kernels, one that is warp-efficient for SHA512 generation,
-    // and another that is warp efficient for bignum division to more
-    // efficiently scan for prefixes. Right now bs58enc cuts performance
-    // from 16M keys on my machine per second to 4M.
     for (int attempts = 0; attempts < ATTEMPTS_PER_EXECUTION; ++attempts)
     {
+        // Refill the random batch when needed
+        if (batch_index == 0)
+        {
+            for (int i = 0; i < BATCH_SIZE; i++)
+            {
+                random_batch[i] = curand(&localState);
+            }
+        }
+
+        // Use the next random value from our batch
+        for (int i = 0; i < 8; i++)
+        {
+            // Each random uint32 gives us 4 bytes of seed
+            unsigned int r = random_batch[batch_index];
+            seed[i * 4 + 0] = (r >> 24) & 0xFF;
+            seed[i * 4 + 1] = (r >> 16) & 0xFF;
+            seed[i * 4 + 2] = (r >> 8) & 0xFF;
+            seed[i * 4 + 3] = r & 0xFF;
+
+            // Move to next random value in batch
+            batch_index = (batch_index + 1) % BATCH_SIZE;
+            if (batch_index == 0)
+            {
+                // If we used all values, generate a new batch
+                for (int j = 0; j < BATCH_SIZE; j++)
+                {
+                    random_batch[j] = curand(&localState);
+                }
+            }
+        }
+
         // sha512_init Inlined
         md.curlen = 0;
         md.length = 0;
