@@ -4,12 +4,12 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 
-static int MAX_ITERATIONS = 100000;
+static int MAX_ITERATIONS = 1000000;
 static int STOP_AFTER_KEYS_FOUND = 100;
 
 // how many times a gpu thread generates a public key in one go
 static __device__ int ATTEMPTS_PER_EXECUTION;
-static int attempts_per_exec = 100000;
+static int attempts_per_exec = 1000000;
 
 static __device__ const int MAX_PATTERNS = 10;
 

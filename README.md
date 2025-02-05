@@ -8,12 +8,13 @@ A high-performance CUDA-based vanity address generator for Solana. Generates ed2
 # First time setup
 chmod +x mk      # Make build script executable
 chmod +x vanity  # Make wrapper script executable
+chmod +x detect_gpu.py  # Make GPU detection script executable
 
 # If CUDA is not in your system PATH, edit mk script and uncomment:
 # export PATH=/usr/local/cuda/bin:$PATH
 
 # Build the project
-./mk
+./mk   # This will automatically detect your GPU architecture before building
 
 # Run with simple pattern
 ./vanity -p ABC        # Find address starting with ABC
@@ -35,8 +36,15 @@ chmod +x vanity  # Make wrapper script executable
 - `-p, --prefix PATTERN` - Add a prefix pattern to match (can be used multiple times)
 - `-s, --suffix PATTERN` - Add a suffix pattern to match (can be used multiple times)
 - `-n, --num-keys NUM` - Number of keys to generate before stopping (default: 100)
-- `-i, --iterations NUM` - Maximum number of iterations (default: 100000)
-- `-a, --attempts NUM` - Attempts per execution (default: 100000)
+- `-i, --iterations NUM` - Maximum number of GPU kernel launches (default: 1000000). Each iteration represents one batch of parallel work on the GPU.
+- `-a, --attempts NUM` - Number of key generation attempts per GPU thread in each kernel execution (default: 1000000). Higher values mean more work per GPU launch but may affect responsiveness.
+
+For example, with default settings on a GPU with 1000 threads:
+
+- Each thread tries 1000000 keys per kernel launch
+- The kernel launches up to 1000000 times
+- Total possible attempts = threads × attempts × iterations
+- Program stops early if the desired number of keys is found
 
 ## Performance
 
@@ -72,8 +80,8 @@ MATCH:ABCDEFGHIJKLMNOPQRSTUVWXYZabcd,1234567890abcdef1234567890abcdef1234567890a
 The program includes a Python script to convert the hex output to a Solana keypair file:
 
 ```bash
-# Install required package
-pip install base58
+# Install required packages
+pip install base58 pynacl
 
 # Convert using command line
 python convert.py <hex_string>
@@ -82,7 +90,13 @@ python convert.py <hex_string>
 python convert.py
 ```
 
-The script will save the keypair in a file named `keypair_PUBLICKEY.json`, where PUBLICKEY is the base58-encoded public key. You can then use this file with Solana CLI tools.
+The script will:
+
+1. Convert the hex seed to a proper Solana keypair
+2. Save it in a file named `keypair_PUBLICKEY.json`, where PUBLICKEY is the base58-encoded public key
+3. Display the public key for verification
+
+You can then use this keypair file with Solana CLI tools.
 
 # Find a Solana vanity address using GPUs
 
@@ -124,6 +138,21 @@ Sol though.
 Open `src/config.h` and add any prefixes you want to scan for to the list.
 
 ## Building
+
+The project includes automatic GPU architecture detection:
+
+1. The `detect_gpu.py` script uses nvidia-smi to identify your GPU
+2. It automatically updates the build configuration in `src/gpu-common.mk`
+3. The `mk` script runs this detection before each build
+4. No manual configuration of GPU architecture is needed
+
+Requirements:
+
+- CUDA toolkit installed
+- nvidia-smi available in PATH
+- Python 3.x installed
+
+If the automatic detection fails, you can manually edit `src/gpu-common.mk` with your GPU architecture.
 
 Make sure your cuda binary are in your path, and build:
 
