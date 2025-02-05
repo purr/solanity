@@ -10,13 +10,14 @@ def get_gpu_info():
         result = subprocess.run(
             [
                 "nvidia-smi",
-                "--query-gpu=gpu_name,gpu_compute_capability",
+                "--query-gpu=gpu_name,compute_capability",
                 "--format=csv,noheader",
             ],
             capture_output=True,
             text=True,
             check=True,
         )
+        print(result.stdout)
 
         # Parse the output
         gpu_info = result.stdout.strip().split(",")
@@ -33,11 +34,39 @@ def get_gpu_info():
 
         return gpu_name, sm_version, compute_version
 
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
         print(
             "Error: Could not detect NVIDIA GPU. Make sure nvidia-smi is installed and a CUDA-capable GPU is present."
         )
-        sys.exit(1)
+        print(f"nvidia-smi error: {e.stderr}")
+
+        # Fallback to manual detection
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=gpu_name", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            gpu_name = result.stdout.strip()
+            print(f"\nDetected GPU: {gpu_name}")
+            print("Could not automatically determine compute capability.")
+            print(
+                "Please enter your GPU's compute capability (e.g., 8.6 for RTX 30 series, 7.5 for RTX 20 series):"
+            )
+            compute_capability = input().strip()
+
+            major, minor = compute_capability.split(".")
+            sm_version = f"sm_{major}{minor}"
+            compute_version = f"compute_{major}{minor}"
+            return gpu_name, sm_version, compute_version
+
+        except Exception:
+            print(
+                "Could not detect GPU at all. Please edit src/gpu-common.mk manually."
+            )
+            sys.exit(1)
+
     except Exception as e:
         print(f"Error detecting GPU: {str(e)}")
         sys.exit(1)

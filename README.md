@@ -146,13 +146,30 @@ The project includes automatic GPU architecture detection:
 3. The `mk` script runs this detection before each build
 4. No manual configuration of GPU architecture is needed
 
+GPU Compute Capability Reference:
+| GPU Series | Compute Capability |
+|------------|-------------------|
+| RTX 50 Series | 9.0 |
+| RTX 40 Series | 8.9 |
+| RTX 30 Series | 8.6 |
+| RTX 20 Series | 7.5 |
+| GTX 16 Series | 7.5 |
+| GTX 10 Series | 6.1 |
+| GTX 900 Series | 5.2 |
+
+If automatic detection fails, the script will:
+
+1. Try to detect your GPU name
+2. Ask you to input the compute capability from the table above
+3. Update the build configuration accordingly
+
 Requirements:
 
 - CUDA toolkit installed
 - nvidia-smi available in PATH
 - Python 3.x installed
 
-If the automatic detection fails, you can manually edit `src/gpu-common.mk` with your GPU architecture.
+If both automatic detection and manual input fail, you can edit `src/gpu-common.mk` directly with your GPU architecture.
 
 Make sure your cuda binary are in your path, and build:
 
