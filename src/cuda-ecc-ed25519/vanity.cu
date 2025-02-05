@@ -641,23 +641,30 @@ void __global__ vanity_scan(curandState *state, int *keys_found, int *gpu, int *
         // so it might make sense to write a new parallel kernel to do
         // this.
 
-        bool found_match = false;
-        // Check prefix patterns
-        for (int i = 0; i < prefix_count_device; i++)
+        bool found_match = true; // Start with true and require all conditions to stay true
+
+        // If we have prefix patterns, require at least one to match
+        if (prefix_count_device > 0)
         {
-            int pattern_len = 0;
-            while (prefixes[i][pattern_len] != '\0')
-                pattern_len++;
-            if (check_pattern_match(key, prefixes[i], pattern_len, false))
+            bool has_prefix_match = false;
+            for (int i = 0; i < prefix_count_device; i++)
             {
-                found_match = true;
-                break;
+                int pattern_len = 0;
+                while (prefixes[i][pattern_len] != '\0')
+                    pattern_len++;
+                if (check_pattern_match(key, prefixes[i], pattern_len, false))
+                {
+                    has_prefix_match = true;
+                    break;
+                }
             }
+            found_match = found_match && has_prefix_match;
         }
 
-        // Check suffix patterns
-        if (!found_match)
+        // If we have suffix patterns, require at least one to match
+        if (suffix_count_device > 0)
         {
+            bool has_suffix_match = false;
             for (int i = 0; i < suffix_count_device; i++)
             {
                 int pattern_len = 0;
@@ -665,10 +672,11 @@ void __global__ vanity_scan(curandState *state, int *keys_found, int *gpu, int *
                     pattern_len++;
                 if (check_pattern_match(key, suffixes[i], pattern_len, true))
                 {
-                    found_match = true;
+                    has_suffix_match = true;
                     break;
                 }
             }
+            found_match = found_match && has_suffix_match;
         }
 
         if (found_match)
