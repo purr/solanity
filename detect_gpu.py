@@ -17,7 +17,6 @@ def get_gpu_info():
             text=True,
             check=True,
         )
-        print(result.stdout)
 
         # Parse the output
         gpu_info = result.stdout.strip().split(",")
