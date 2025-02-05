@@ -10,11 +10,14 @@ static int attempts_per_exec = 100000;
 
 __device__ const int MAX_PATTERNS = 10;
 
-__device__ bool is_suffix_match = false;
-
-// Prefix array that will be populated from command line args
+// Arrays for both prefix and suffix patterns
 __device__ char prefixes[MAX_PATTERNS][32];
+__device__ char suffixes[MAX_PATTERNS][32];
 
-__device__ __constant__ FILE* output_file;
+// Counters for number of patterns
+__device__ int prefix_count_device;
+__device__ int suffix_count_device;
+
+__device__ __constant__ FILE *output_file;
 
 #endif
