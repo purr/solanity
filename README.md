@@ -70,11 +70,35 @@ pip install base58 pynacl
 
 ## Command Options
 
-- `-p, --prefix PATTERN` - Add prefix pattern (can use multiple times)
-- `-s, --suffix PATTERN` - Add suffix pattern (can use multiple times)
+- `-p, --prefix PATTERN` - Add prefix pattern (can use multiple times, up to 32 patterns)
+- `-s, --suffix PATTERN` - Add suffix pattern (can use multiple times, up to 32 patterns)
 - `-n, --num-keys NUM` - Stop after finding NUM keys (default: 100)
 - `-i, --iterations NUM` - Maximum GPU kernel launches (default: 1000000)
 - `-a, --attempts NUM` - Attempts per GPU thread (default: 1000000)
+
+## Case Sensitivity and Pattern Matching
+
+The vanity address generator is case-sensitive. To search for all case variations, you can:
+
+1. Use our helper script:
+
+```bash
+# Generate all case combinations
+python case_combinations.py meow p  # for prefix
+python case_combinations.py pump s  # for suffix
+
+# Or use interactive mode:
+python case_combinations.py
+```
+
+2. Manually specify each variation:
+
+```bash
+./vanity -p PUMP -p Pump -p pump  # Different cases
+./vanity -p P?MP                  # ? matches any character
+```
+
+The program supports up to 32 patterns of each type (prefix/suffix), allowing you to search for all case variations of longer patterns. For example, a 4-letter pattern like "PUMP" has 16 possible case combinations, all of which can be searched simultaneously.
 
 ## Understanding the Output
 

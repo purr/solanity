@@ -56,7 +56,7 @@ void print_usage()
     printf("  -i, --iterations NUM    Maximum number of iterations (default: 100000)\n");
     printf("  -a, --attempts NUM      Attempts per execution (default: 100000)\n");
     printf(" pattern1, pattern2, etc: Prefix patterns to search for. Use ? as wildcard.\n");
-    printf("Example: vanity -s PUMP -s pump -p ZUKE -p zuke -n 5 -i 50000 -a 200000\n");
+    printf("Example: vanity -s PUMP -s pump -p MOO -p moo -n 5 -i 50000 -a 200000\n");
 }
 
 int main(int argc, char const *argv[])

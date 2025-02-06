@@ -11,7 +11,8 @@ static int STOP_AFTER_KEYS_FOUND = 100;
 static __device__ int ATTEMPTS_PER_EXECUTION;
 static int attempts_per_exec = 1000000;
 
-static __device__ const int MAX_PATTERNS = 10;
+// Increased from 10 to 32 to handle more case combinations
+static __device__ const int MAX_PATTERNS = 32;
 
 // Arrays for both prefix and suffix patterns
 static __device__ char prefixes[MAX_PATTERNS][32];
