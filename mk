@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # Detect and configure GPU architecture
-echo "Detecting GPU architecture..."
-python3 detect_gpu.py
+python3 py/detect_gpu.py
 
 # Clean previous build
 rm ./src/release/cuda_ed25519_vanity;

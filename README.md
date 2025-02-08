@@ -17,7 +17,7 @@ You can rent a GPU from vast.ai to run this tool. Use our [referral link](https:
 # Clone and setup
 git clone https://github.com/purr/solanity.git
 cd solanity
-chmod +x mk vanity detect_gpu.py
+chmod +x mk vanity py/detect_gpu.py
 pip install base58 pynacl
 
 # Build and run
@@ -42,7 +42,7 @@ git clone https://github.com/yourusername/solanity.git
 cd solanity
 
 # Make scripts executable
-chmod +x mk vanity detect_gpu.py
+chmod +x mk vanity py/detect_gpu.py
 
 # Install Python dependencies
 pip install base58 pynacl
