@@ -781,21 +781,23 @@ bool __device__ b58enc(
     uint8_t *data,
     size_t binsz)
 {
-    // Base58 Lookup Table
     const char b58digits_ordered[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
     const uint8_t *bin = data;
-    int carry;
+    uint64_t carry;
     size_t i, j, high, zcount = 0;
-    size_t size;
 
-    while (zcount < binsz && !bin[zcount])
-        ++zcount;
+    // Fast leading zero count using 32-bit chunks
+    uint32_t *data32 = (uint32_t *)data;
+    while (zcount < binsz && data32[zcount / 4] == 0)
+        zcount += 4;
+    while (zcount < binsz && bin[zcount] == 0)
+        zcount++;
 
-    size = (binsz - zcount) * 138 / 100 + 1;
-    uint8_t buf[256];
-    memset(buf, 0, size);
+    // Fixed size buffer since we know input is always 32 bytes
+    size_t size = 45; // Maximum possible size for 32 bytes input
+    uint8_t buf[45] = {0};
 
+    // Optimized base conversion
     for (i = zcount, high = size - 1; i < binsz; ++i, high = j)
     {
         for (carry = bin[i], j = size - 1; (j > high) || carry; --j)
@@ -804,24 +806,19 @@ bool __device__ b58enc(
             buf[j] = carry % 58;
             carry /= 58;
             if (!j)
-            {
-                // Otherwise j wraps to maxint which is > high
                 break;
-            }
         }
     }
 
-    for (j = 0; j < size && !buf[j]; ++j)
-        ;
+    // Skip leading zeros in buffer
+    j = 0;
+    while (j < size && !buf[j])
+        j++;
 
-    if (*b58sz <= zcount + size - j)
-    {
-        *b58sz = zcount + size - j + 1;
-        return false;
-    }
-
+    // Build the output string
     if (zcount)
         memset(b58, '1', zcount);
+
     for (i = zcount; j < size; ++i, ++j)
         b58[i] = b58digits_ordered[buf[j]];
 
